@@ -1,9 +1,11 @@
 anthropic>=2.14
 pydantic>=2.7
 pyyaml>=6.0
-# Tuỳ chọn: chép lời tiếng Việt
+# Chép lời tiếng Việt (phân tích video + xác minh đồng ý)
 faster-whisper>=1.0
 # App điều khiển
+google-genai>=3.6   # Gemini Omni Flash
+requests>=2.32
 streamlit>=1.40
 playwright>=1.48   # sau khi cài: python -m playwright install chromium
 yt-dlp>=2025.1.1

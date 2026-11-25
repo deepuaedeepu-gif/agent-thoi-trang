@@ -18,13 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from agent_thoi_trang import config, facebook_scan  # noqa: E402
+from agent_thoi_trang import consent, facebook_scan, tts  # noqa: E402
 from agent_thoi_trang.analyze import analyze_folder  # noqa: E402
 from agent_thoi_trang.export import formula_markdown, script_markdown, write_outputs  # noqa: E402
 from agent_thoi_trang.formula import build_formula  # noqa: E402
 from agent_thoi_trang.llm import ClaudeLLM  # noqa: E402
 from agent_thoi_trang.pipeline import ScriptJob, generate_until_enough  # noqa: E402
-from agent_thoi_trang.store import Presenter, Product, SavedFormula, Store, now, slugify  # noqa: E402
+from agent_thoi_trang.models import ScoredScript  # noqa: E402
+from agent_thoi_trang.production import get_status, produce, set_status  # noqa: E402
+from agent_thoi_trang.store import Consent, Presenter, Product, SavedFormula, Store, Voice, now, slugify  # noqa: E402
 
 st.set_page_config(page_title="Agent video thời trang", page_icon="🎬", layout="wide")
 store = Store()
@@ -34,11 +36,16 @@ store = Store()
 
 with st.sidebar:
     st.header("Kết nối")
-    key = st.text_input("Anthropic API key", type="password", value=os.environ.get("ANTHROPIC_API_KEY", ""),
-                        help="Chỉ giữ trong phiên chạy này, không ghi ra file.")
-    if key:
-        os.environ["ANTHROPIC_API_KEY"] = key
-    st.caption("Tạo video tự động (Veo qua Gemini API, Grok Imagine qua xAI API) sẽ có ở bước tiếp theo.")
+    st.caption("Khoá chỉ giữ trong phiên chạy này, không ghi ra file. Có thể đặt sẵn bằng biến môi trường.")
+    for env, label in [("ANTHROPIC_API_KEY", "Anthropic (viết, chấm kịch bản)"),
+                       ("GEMINI_API_KEY", "Gemini API (tạo video Omni)"),
+                       ("XAI_API_KEY", "xAI (tạo video Grok Imagine)"),
+                       ("GOOGLE_TTS_API_KEY", "Google Cloud TTS"),
+                       ("FPT_AI_API_KEY", "FPT.AI TTS"),
+                       ("ELEVENLABS_API_KEY", "ElevenLabs")]:
+        val = st.text_input(label, type="password", value=os.environ.get(env, ""), key=f"key-{env}")
+        if val:
+            os.environ[env] = val
     st.divider()
     st.subheader("Facebook")
     if facebook_scan.has_session():
@@ -151,48 +158,167 @@ with tab_formula:
 
 # ---------- Tab Kho Người mẫu ----------
 
+def save_upload(upload, dest: Path) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(upload.getvalue())
+    return dest
+
+
+def consent_box(kind: str, purpose: str, extra: str = "") -> consent.Challenge | None:
+    """Tạo/giữ câu đồng ý có mã ngẫu nhiên cho một biểu mẫu."""
+    state_key = f"challenge-{kind}"
+    person = st.text_input("Họ tên người thật", key=f"name-{kind}")
+    if st.button("Tạo câu đồng ý mới", key=f"mk-{kind}") and person.strip():
+        st.session_state[state_key] = consent.new_challenge(person, purpose)
+    ch = st.session_state.get(state_key)
+    if ch:
+        st.markdown("**Người đó tự quay/ghi âm, đọc đúng câu sau** (mã đổi mỗi lần bấm tạo):")
+        st.info(ch.statement)
+        if extra:
+            st.caption(extra)
+    return ch
+
+
 with tab_models:
     st.subheader("Người dẫn")
     for p in store.presenters():
-        cols = st.columns([1, 3])
+        cols = st.columns([1, 3, 1])
         with cols[0]:
             if p.images:
-                st.image(p.images[0], width=140)
+                st.image(p.images[0], width=120)
         with cols[1]:
             badge = "Nhân vật AI" if p.kind == "ai_original" else (
                 "Người thật · đã xác minh" if p.usable else "Người thật · CHƯA xác minh")
             st.markdown(f"**{p.name}** · {badge}")
             st.caption(p.description_en)
-    st.divider()
-    st.subheader("Tạo nhân vật AI mới")
-    st.caption("Nhân vật AI phải là người hư cấu, không mô tả theo người thật nào.")
-    with st.form("new-ai-presenter", clear_on_submit=True):
-        pname = st.text_input("Tên nhân vật")
-        pdesc = st.text_area("Mô tả ngoại hình (tiếng Anh, dùng cho prompt video)",
-                             placeholder="A fictional Vietnamese woman in her late 20s, long straight black hair...")
-        pimgs = st.file_uploader("Ảnh nhân vật do AI tạo: mặt, các góc, toàn thân (tuỳ chọn)",
-                                 type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
-        if st.form_submit_button("Lưu nhân vật"):
-            if not pname or not pdesc:
-                st.error("Cần tên và mô tả.")
-            else:
-                pid = slugify(pname)
-                paths = [store.save_file("presenters", pid, f.name, f.getvalue()) for f in pimgs or []]
-                store.save_presenter(Presenter(id=pid, name=pname, kind="ai_original", description_en=pdesc,
-                                               images=paths, created_at=now()))
-                st.success(f"Đã lưu {pname}.")
+        with cols[2]:
+            if p.id != "may-ai" and st.button("Xoá", key=f"delp-{p.id}"):
+                store.delete_presenter(p.id)
                 st.rerun()
-    st.info("Thêm người dẫn là người thật (cần video tự quay nói câu đồng ý để xác minh) sẽ có ở bước tiếp theo.")
+    st.divider()
+    kind = st.radio("Thêm người dẫn", ["Nhân vật AI mới", "Người thật (cần xác minh đồng ý)"], horizontal=True)
+    if kind == "Nhân vật AI mới":
+        st.caption("Nhân vật AI phải là người hư cấu, không mô tả hay dùng ảnh của người thật nào.")
+        with st.form("new-ai-presenter", clear_on_submit=True):
+            pname = st.text_input("Tên nhân vật")
+            pdesc = st.text_area("Mô tả ngoại hình (tiếng Anh, dùng cho prompt video)",
+                                 placeholder="A fictional Vietnamese woman in her late 20s, long straight black hair...")
+            pimgs = st.file_uploader("Ảnh nhân vật do AI tạo: mặt, các góc, toàn thân (tuỳ chọn)",
+                                     type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+            if st.form_submit_button("Lưu nhân vật"):
+                if not pname or not pdesc:
+                    st.error("Cần tên và mô tả.")
+                else:
+                    pid = slugify(pname)
+                    paths = [store.save_file("presenters", pid, f.name, f.getvalue()) for f in pimgs or []]
+                    store.save_presenter(Presenter(id=pid, name=pname, kind="ai_original", description_en=pdesc,
+                                                   images=paths, created_at=now()))
+                    st.success(f"Đã lưu {pname}.")
+                    st.rerun()
+    else:
+        st.caption("Chỉ dùng mặt của chính bạn hoặc người đã đồng ý. Ảnh tham chiếu được lấy từ chính video "
+                   "xác minh, nên không nhận ảnh từ nguồn khác.")
+        ch = consent_box("presenter", "khuôn mặt và giọng nói",
+                         "Quay dọc 20-40 giây, nơi đủ sáng: nhìn thẳng camera đọc câu trên, sau đó quay mặt sang "
+                         "trái, sang phải, rồi lùi ra xa cho thấy toàn thân.")
+        if ch:
+            vid = st.file_uploader("Video xác minh", type=["mp4", "mov", "m4v", "webm"], key="consent-video")
+            pdesc = st.text_area("Mô tả ngoại hình bằng tiếng Anh (tóc, dáng, phong cách; không cần tên)",
+                                 key="real-desc")
+            if st.button("Xác minh và lưu", type="primary", key="verify-presenter") and vid:
+                pid = slugify(ch.person_name)
+                vpath = save_upload(vid, store.root / "presenters" / pid / f"consent{Path(vid.name).suffix}")
+                with st.spinner("Đang nghe lại video để kiểm tra câu đồng ý..."):
+                    try:
+                        result = consent.verify_media(vpath, ch)
+                    except Exception as exc:
+                        result = None
+                        st.error(f"Không xác minh được: {exc}")
+                if result and result.passed:
+                    frames = consent.extract_reference_frames(vpath, store.root / "presenters" / pid)
+                    store.save_presenter(Presenter(
+                        id=pid, name=ch.person_name, kind="real_person", images=frames, created_at=now(),
+                        description_en=pdesc or "The real person shown in the reference images.",
+                        consent=Consent(person_name=ch.person_name, consent_video=str(vpath), statement=ch.statement,
+                                        verified=True, verified_at=now())))
+                    st.session_state.pop("challenge-presenter", None)
+                    st.success(f"Đã xác minh và lưu {ch.person_name} với {len(frames)} ảnh tham chiếu lấy từ video.")
+                elif result:
+                    st.error("Chưa đạt: " + "; ".join(result.reasons))
+                    st.caption(f"App nghe được: “{result.transcript}”")
 
 
 # ---------- Tab Kho voice ----------
 
 with tab_voices:
-    st.subheader("Giọng đọc có sẵn")
+    st.subheader("Kho giọng")
+    voices_now = store.voices()
     st.dataframe([{"Tên": v.name, "Nhà cung cấp": v.provider, "Mã giọng": v.provider_voice_id,
-                   "Giới tính": v.gender} for v in store.voices()], width="stretch", hide_index=True)
-    st.info("Thêm giọng FPT.AI, ElevenLabs, nghe thử, và tạo giọng mới từ mp3 (cần bản ghi đồng ý bằng chính "
-            "giọng đó) sẽ có ở bước tiếp theo.")
+                   "Loại": "Giọng tạo mới" if v.kind == "cloned" else "Có sẵn", "Giới tính": v.gender}
+                  for v in voices_now], width="stretch", hide_index=True)
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Thêm giọng FPT.AI"):
+        for v in tts.fpt_stock_voices():
+            store.save_voice(v)
+        st.rerun()
+    if c2.button("Cập nhật giọng Google"):
+        try:
+            for v in tts.google_voices():
+                store.save_voice(v)
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+    if c3.button("Thêm giọng ElevenLabs"):
+        try:
+            for v in tts.elevenlabs_voices():
+                store.save_voice(v)
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.markdown("**Nghe thử**")
+    pv = st.selectbox("Giọng", voices_now, format_func=lambda v: v.name, key="preview-voice")
+    ptext = st.text_input("Câu thử", "Xin chào mấy bà, hôm nay mình phối đồ đi chơi Tết nha!")
+    if st.button("Nghe thử") and pv:
+        try:
+            out = tts.synthesize(pv, ptext, store.root / "voices" / "_preview.mp3")
+            st.audio(out.read_bytes(), format="audio/mp3")
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.divider()
+    st.subheader("Tạo giọng mới từ file ghi âm (ElevenLabs)")
+    st.caption("Chỉ tạo giọng của chính bạn hoặc người đã đồng ý. File tải lên phải mở đầu bằng câu đồng ý "
+               "do chính giọng đó đọc; cả file được dùng làm mẫu giọng.")
+    ch = consent_box("voice", "giọng nói",
+                     "Ghi âm 30-90 giây nơi yên tĩnh: đọc câu trên, sau đó đọc tiếp đoạn sau để làm mẫu giọng: "
+                     + consent.SAMPLE_PARAGRAPH)
+    if ch:
+        audio = st.file_uploader("File ghi âm (mp3, wav, m4a)", type=["mp3", "wav", "m4a"], key="consent-audio")
+        if st.button("Xác minh và tạo giọng", type="primary") and audio:
+            vid = f"clone-{slugify(ch.person_name)}"
+            apath = save_upload(audio, store.root / "voices" / vid / f"sample{Path(audio.name).suffix}")
+            with st.spinner("Đang nghe lại để kiểm tra câu đồng ý..."):
+                try:
+                    result = consent.verify_media(apath, ch)
+                except Exception as exc:
+                    result = None
+                    st.error(f"Không xác minh được: {exc}")
+            if result and result.passed:
+                voice = Voice(id=vid, name=f"{ch.person_name} (giọng tạo mới)", provider="elevenlabs",
+                              provider_voice_id="", kind="cloned", sample=str(apath), created_at=now(),
+                              consent=Consent(person_name=ch.person_name, consent_audio=str(apath),
+                                              statement=ch.statement, verified=True, verified_at=now()))
+                try:
+                    voice.provider_voice_id = tts.clone_elevenlabs(voice, apath)
+                    store.save_voice(voice)
+                    st.session_state.pop("challenge-voice", None)
+                    st.success(f"Đã tạo giọng {voice.name}.")
+                except Exception as exc:
+                    st.error(f"Xác minh đạt nhưng ElevenLabs chưa tạo được giọng: {exc}")
+            elif result:
+                st.error("Chưa đạt: " + "; ".join(result.reasons))
+                st.caption(f"App nghe được: “{result.transcript}”")
 
 
 # ---------- Tab Dựng video ----------
@@ -205,6 +331,16 @@ def flow_package(job_dir: Path, image_paths: list[str]) -> bytes:
                 z.write(job_dir / fname, fname)
         for p in image_paths:
             z.write(p, f"anh_san_pham/{Path(p).name}")
+    return buf.getvalue()
+
+
+def draft_zip(folder: Path) -> bytes:
+    """Bản nháp chỉnh sửa được: clip rời, voice, phụ đề, timeline, bản xem thử."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for f in folder.rglob("*"):
+            if f.is_file() and "scenes" not in f.parts:
+                z.write(f, f.relative_to(folder))
     return buf.getvalue()
 
 
@@ -259,6 +395,7 @@ with tab_build:
                         all_scored, selected = generate_until_enough(ClaudeLLM(), job, log=box.write)
                         write_outputs(job_dir, formula.formula, all_scored, selected)
                         st.session_state["last_job"] = {"dir": str(job_dir), "images": product.images,
+                                                        "presenter_id": presenter.id, "voice_id": voice.id,
                                                         "selected": [s.model_dump() for s in selected]}
                         box.update(label=f"Xong: {len(selected)}/{target} kịch bản đạt ≥ {threshold}",
                                    state="complete")
@@ -267,23 +404,62 @@ with tab_build:
 
     last = st.session_state.get("last_job")
     if last:
-        from agent_thoi_trang.models import ScoredScript
-
         st.divider()
         selected = [ScoredScript.model_validate(s) for s in last["selected"]]
+        job_dir = Path(last["dir"])
         st.subheader(f"{len(selected)} kịch bản tốt nhất")
         for i, s in enumerate(selected):
             with st.expander(f"{i + 1}. {s.script.title} — {s.total} điểm"):
                 st.markdown(script_markdown(s, i + 1))
-        job_dir = Path(last["dir"])
 
         st.subheader("Tạo video")
-        platform = st.radio("Nền tảng", ["Google Flow (xuất prompt, dán tay)", "Veo (API)", "Grok Imagine (API)"],
-                            horizontal=True)
+        platform = st.radio("Nền tảng", ["Gemini Omni Flash (API Google)", "Grok Imagine (API xAI)",
+                                         "Google Flow (xuất prompt, dán tay)"], horizontal=True)
         if platform.startswith("Google Flow"):
             st.caption("Google Flow không có API. Tải gói prompt và ảnh sản phẩm để dán vào Flow.")
             st.download_button("Tải gói cho Google Flow (.zip)", flow_package(job_dir, last["images"]),
                                file_name=f"flow_{job_dir.name}.zip")
         else:
-            st.info("Tự động tạo video qua API sẽ có ở bước tiếp theo. Agent sẽ luôn gửi kèm ảnh người dẫn, "
-                    "ảnh sản phẩm và voice đã chọn cho từng cảnh.")
+            provider = "omni" if platform.startswith("Gemini") else "grok"
+            presenter_obj = next((p for p in store.presenters() if p.id == last["presenter_id"]), None)
+            voice_obj = next((v for v in store.voices() if v.id == last["voice_id"]), None)
+            st.caption(f"Người dẫn: {presenter_obj.name if presenter_obj else '?'} · Voice: "
+                       f"{voice_obj.name if voice_obj else '?'} · Ảnh sản phẩm: {len(last['images'])}. "
+                       "Mỗi cảnh luôn gửi kèm ảnh người dẫn và ảnh sản phẩm làm ảnh tham chiếu.")
+            if presenter_obj and not presenter_obj.images:
+                st.warning("Người dẫn này chưa có ảnh; nền tảng chỉ dựa vào mô tả nên nhân vật có thể không "
+                           "đồng nhất giữa các cảnh. Nên thêm ảnh ở Kho Người mẫu.")
+            n_scenes = sum(len(s.script.scenes) for s in selected)
+            st.caption(f"Sẽ tạo {n_scenes} clip cho {len(selected)} video. Nền tảng tính phí theo từng clip.")
+            if st.button("Tạo video", type="primary"):
+                if not (presenter_obj and voice_obj):
+                    st.error("Không tìm thấy người dẫn hoặc voice đã chọn.")
+                else:
+                    with st.status("Đang tạo video...", expanded=True) as box:
+                        done = 0
+                        for s in selected:
+                            try:
+                                produce(s, presenter_obj, voice_obj, last["images"], provider,
+                                        job_dir / "videos", log=box.write)
+                                done += 1
+                            except Exception as exc:
+                                box.write(f"❌ {s.script.script_id}: {exc}")
+                        box.update(label=f"Xong {done}/{len(selected)} video", state="complete" if done else "error")
+
+        videos_dir = job_dir / "videos"
+        if videos_dir.exists():
+            st.subheader("Duyệt video")
+            for folder in sorted(p for p in videos_dir.iterdir() if (p / "preview.mp4").exists()):
+                status = get_status(folder)
+                with st.expander(f"{folder.name} · {status['status']}", expanded=status["status"] == "chờ duyệt"):
+                    st.video(str(folder / "preview.mp4"))
+                    note = st.text_input("Ghi chú", status.get("note", ""), key=f"note-{folder.name}")
+                    a, b, c = st.columns(3)
+                    if a.button("Duyệt", key=f"ok-{folder.name}"):
+                        set_status(folder, "đã duyệt", note)
+                        st.rerun()
+                    if b.button("Cần sửa", key=f"fix-{folder.name}"):
+                        set_status(folder, "cần sửa", note)
+                        st.rerun()
+                    c.download_button("Tải bản nháp (.zip)", draft_zip(folder), file_name=f"{folder.name}_ban_nhap.zip",
+                                      key=f"dl-{folder.name}")

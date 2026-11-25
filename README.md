@@ -8,12 +8,26 @@ python -m playwright install chromium     # cho chức năng quét Facebook
 streamlit run app/app.py                  # mở http://localhost:8501
 ```
 
-| Tab | Đã có | Bước sau |
-|---|---|---|
-| Công thức thành công | Đăng nhập Facebook trong cửa sổ riêng, quét link trang/reel, chọn 5-20 reel nhiều view nhất, tải về, phân tích, lưu công thức có tên. Hoặc tải video lên trực tiếp. | |
-| Kho Người mẫu | Nhân vật AI mặc định, tạo nhân vật AI mới kèm ảnh | Người dẫn là người thật, có bước xác minh bằng video đồng ý |
-| Kho voice | 10 giọng tiếng Việt Google Cloud TTS | FPT.AI, ElevenLabs, nghe thử, tạo giọng từ mp3 (có bản ghi đồng ý) |
-| Dựng video | Chọn công thức, người dẫn, voice, ảnh sản phẩm, số kịch bản, ngưỡng điểm, tạo kịch bản; tải gói prompt + ảnh cho Google Flow | Tự tạo video qua Veo (Gemini API) và Grok Imagine (xAI API) |
+| Tab | Chức năng |
+|---|---|
+| Công thức thành công | Đăng nhập Facebook trong cửa sổ riêng, quét link trang/reel, chọn 5-20 reel nhiều view nhất, tải về, phân tích, lưu công thức có tên. Hoặc tải video lên trực tiếp. |
+| Kho Người mẫu | Nhân vật AI (mô tả + ảnh). Người thật: bắt buộc video tự quay đọc câu đồng ý có mã ngẫu nhiên; ảnh tham chiếu lấy từ chính video đó. |
+| Kho voice | Giọng có sẵn Google Cloud TTS, FPT.AI, ElevenLabs; nghe thử; tạo giọng mới từ file ghi âm (ElevenLabs) khi file mở đầu bằng câu đồng ý có mã ngẫu nhiên. |
+| Dựng video | Chọn công thức, người dẫn, voice, ảnh sản phẩm, số kịch bản, ngưỡng điểm → tạo kịch bản → tạo video qua Gemini Omni Flash hoặc Grok Imagine (luôn gửi kèm ảnh người dẫn + ảnh sản phẩm) → ghép voice, chữ → duyệt → tải bản nháp. |
+
+Khoá API nhập ở thanh bên (chỉ giữ trong phiên chạy) hoặc đặt biến môi trường: `ANTHROPIC_API_KEY`,
+`GEMINI_API_KEY`, `XAI_API_KEY`, `GOOGLE_TTS_API_KEY`, `FPT_AI_API_KEY`, `ELEVENLABS_API_KEY`.
+
+**Bản nháp mỗi video** (`data/jobs/<lần chạy>/videos/<mã kịch bản>/`): `clips/` clip từng cảnh, `voice/` lời đọc
+từng cảnh, `subtitles.srt`, `text_overlays.srt`, `timeline.json` (mốc thời gian, file, chữ, prompt từng cảnh),
+`preview.mp4`. Kéo các file này vào CapCut hoặc Premiere để chỉnh.
+
+**Về nền tảng tạo video:** Veo 3.1 bản preview trên Gemini API đã ngừng ngày 22/10/2026; Google thay bằng
+Gemini Omni Flash (`gemini-omni-1.1-flash`), app dùng model này. Omni không nhận ảnh của một số người nổi tiếng
+và ghi rõ chỉ kiểm thử đầy đủ với tiếng Anh, nên lời thoại tiếng Việt được tạo riêng bằng TTS rồi ghép vào.
+
+**Về xác minh đồng ý:** cần `faster-whisper` (tải model lần đầu). Câu đồng ý chứa mã 4 số đổi mỗi lần, nên video
+hay âm thanh tải từ mạng về không qua được bước này.
 
 Lưu ý về quét Facebook: bạn tự đăng nhập trong cửa sổ trình duyệt riêng (hồ sơ ở `data/browser/facebook`),
 app không lưu mật khẩu. Điều khoản của Meta không cho phép thu thập tự động, nên tài khoản dùng để quét có thể

@@ -140,6 +140,14 @@ class Store:
         return [Presenter.model_validate_json(p.read_text(encoding="utf-8"))
                 for p in sorted((self.root / "presenters").glob("*/presenter.json"))]
 
+    def delete_presenter(self, pid: str) -> None:
+        import shutil
+        shutil.rmtree(self.root / "presenters" / pid, ignore_errors=True)
+
+    def delete_voice(self, vid: str) -> None:
+        import shutil
+        shutil.rmtree(self.root / "voices" / vid, ignore_errors=True)
+
     def save_voice(self, v: Voice) -> None:
         (self._dir("voices", v.id) / "voice.json").write_text(v.model_dump_json(indent=2), encoding="utf-8")
 
