@@ -1,5 +1,15 @@
 # Agent video thời trang
 
+## Chạy nhanh
+
+1. Cài [Python 3.11 trở lên](https://www.python.org/downloads/) (Windows: tick **Add python.exe to PATH**).
+2. Tải code về và giải nén.
+3. Bấm đúp **`chay_app_windows.bat`** (Windows) hoặc **`chay_app_mac.command`** (macOS; lần đầu chuột phải → Open).
+   Lần đầu mất vài phút để cài thư viện.
+4. Trình duyệt mở **http://localhost:8501**. Vào tab **⚙️ Cài đặt**, làm theo hướng dẫn để tạo và dán khoá API.
+   Chỉ khoá Claude là bắt buộc để tạo kịch bản.
+
+
 ## App điều khiển
 
 ```bash
