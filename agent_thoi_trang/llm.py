@@ -57,6 +57,13 @@ def text_block(text: str) -> dict:
     return {"type": "text", "text": text}
 
 
+IMAGE_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+
+
 def image_block(path: str | Path) -> dict:
-    data = base64.standard_b64encode(Path(path).read_bytes()).decode()
-    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
+    path = Path(path)
+    media_type = IMAGE_TYPES.get(path.suffix.lower())
+    if media_type is None:
+        raise ValueError(f"Định dạng ảnh không hỗ trợ: {path.name} (dùng jpg, png, webp)")
+    data = base64.standard_b64encode(path.read_bytes()).decode()
+    return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}}

@@ -1,4 +1,29 @@
-# Agent video thời trang — giai đoạn 1
+# Agent video thời trang
+
+## App điều khiển
+
+```bash
+pip install -r requirements.txt
+python -m playwright install chromium     # cho chức năng quét Facebook
+streamlit run app/app.py                  # mở http://localhost:8501
+```
+
+| Tab | Đã có | Bước sau |
+|---|---|---|
+| Công thức thành công | Đăng nhập Facebook trong cửa sổ riêng, quét link trang/reel, chọn 5-20 reel nhiều view nhất, tải về, phân tích, lưu công thức có tên. Hoặc tải video lên trực tiếp. | |
+| Kho Người mẫu | Nhân vật AI mặc định, tạo nhân vật AI mới kèm ảnh | Người dẫn là người thật, có bước xác minh bằng video đồng ý |
+| Kho voice | 10 giọng tiếng Việt Google Cloud TTS | FPT.AI, ElevenLabs, nghe thử, tạo giọng từ mp3 (có bản ghi đồng ý) |
+| Dựng video | Chọn công thức, người dẫn, voice, ảnh sản phẩm, số kịch bản, ngưỡng điểm, tạo kịch bản; tải gói prompt + ảnh cho Google Flow | Tự tạo video qua Veo (Gemini API) và Grok Imagine (xAI API) |
+
+Lưu ý về quét Facebook: bạn tự đăng nhập trong cửa sổ trình duyệt riêng (hồ sơ ở `data/browser/facebook`),
+app không lưu mật khẩu. Điều khoản của Meta không cho phép thu thập tự động, nên tài khoản dùng để quét có thể
+bị yêu cầu xác minh hoặc khoá tạm thời. App cuộn chậm, nghỉ ngẫu nhiên và giới hạn 20 video để giảm rủi ro.
+
+Dữ liệu (công thức, người dẫn, voice, sản phẩm, kết quả) lưu trong thư mục `data/` trên máy bạn.
+
+Google Flow và muse.ai không có API tạo video chính thức, nên app chỉ xuất prompt để dán tay.
+
+## Dòng lệnh (giai đoạn 1)
 
 Agent phân tích video mẫu của các kênh thời trang, rút ra công thức thành công, viết kịch bản,
 chấm điểm và chọn **10 kịch bản đạt từ 90 điểm**, mỗi kịch bản kèm **prompt Veo cho từng cảnh**

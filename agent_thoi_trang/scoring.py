@@ -57,14 +57,18 @@ def score_and_improve(
     formula: ChannelFormula,
     rewrite: Callable[[Script, list[str]], Script],
     log: Callable[[str], None] = print,
+    pass_score: float | None = None,
 ) -> list[ScoredScript]:
-    """Chấm tất cả; kịch bản 80-89 được viết lại theo góp ý tối đa MAX_REWRITE_ROUNDS vòng."""
+    """Chấm tất cả; kịch bản thiếu tối đa 10 điểm so với ngưỡng được viết lại theo góp ý
+    (tối đa MAX_REWRITE_ROUNDS vòng)."""
+    pass_score = config.PASS_SCORE if pass_score is None else pass_score
+    rewrite_min = pass_score - (config.PASS_SCORE - config.REWRITE_MIN_SCORE)
     results: list[ScoredScript] = []
     for script in scripts:
         cards = score_script(llm, script, formula)
         item = ScoredScript(script=script, score_cards=cards, total=average(cards))
         log(f"{script.script_id}: {item.total}")
-        while (config.REWRITE_MIN_SCORE <= item.total < config.PASS_SCORE
+        while (rewrite_min <= item.total < pass_score
                and item.revision < config.MAX_REWRITE_ROUNDS):
             notes = [n for c in item.score_cards for n in c.improvement_notes]
             new_script = rewrite(item.script, notes)

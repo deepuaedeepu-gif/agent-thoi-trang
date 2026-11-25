@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from pathlib import Path
 
-from .llm import LLM, text_block
+from .llm import LLM, image_block, text_block
 from .models import ChannelFormula, Script, ScriptBatch
 
 
@@ -39,14 +41,23 @@ def write_scripts(
     count: int,
     id_prefix: str = "KB",
     start_index: int = 1,
+    product_images: Sequence[str | Path] = (),
+    voice: dict | None = None,
 ) -> list[Script]:
+    voice_line = f"GIỌNG ĐỌC ĐÃ CHỌN: {json.dumps(voice, ensure_ascii=False)}\n\n" if voice else ""
     prompt = (
         f"CÔNG THỨC KÊNH:\n{formula.model_dump_json(indent=1)}\n\n"
         f"SẢN PHẨM VÀ BỐI CẢNH:\n{json.dumps(products, ensure_ascii=False, indent=1)}\n\n"
-        f"PRESENTER SHEET:\n{presenter_sheet(presenter_cfg)}\n\n"
+        f"PRESENTER SHEET:\n{presenter_sheet(presenter_cfg)}\n\n{voice_line}"
         f"Hãy viết {count} kịch bản. Đặt script_id lần lượt từ {id_prefix}{start_index:03d}."
     )
-    batch = llm.parse(WRITER_SYSTEM, [text_block(prompt)], ScriptBatch, effort="high")
+    content = [text_block(prompt)]
+    if product_images:
+        content.append(text_block(
+            "ẢNH SẢN PHẨM THẬT (bắt buộc dùng đúng sản phẩm này; mô tả chính xác màu, chất liệu, chi tiết "
+            "trong mọi veo_prompt; khi dựng video, ảnh này được gửi kèm làm ảnh tham chiếu):"))
+        content += [image_block(p) for p in product_images]
+    batch = llm.parse(WRITER_SYSTEM, content, ScriptBatch, effort="high")
     return batch.scripts
 
 

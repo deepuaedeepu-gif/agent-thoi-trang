@@ -17,9 +17,8 @@ from .analyze import analyze_folder
 from .export import write_outputs
 from .formula import build_formula
 from .llm import LLM, ClaudeLLM
-from .models import AnalyzedVideo, ChannelFormula, ScoredScript
-from .scoring import score_and_improve, select_top
-from .scripts import rewrite_script, write_scripts
+from .models import AnalyzedVideo, ChannelFormula
+from .pipeline import ScriptJob, generate_until_enough
 
 
 def cmd_analyze(args, llm: LLM | None) -> list[AnalyzedVideo]:
@@ -44,32 +43,15 @@ def cmd_formula(args, llm: LLM) -> ChannelFormula:
     return formula
 
 
-def generate_until_enough(llm: LLM, formula: ChannelFormula, products: dict, presenter: dict,
-                          batch_size: int, max_scripts: int) -> tuple[list[ScoredScript], list[ScoredScript]]:
-    """Viết theo lô cho tới khi có đủ TARGET_COUNT kịch bản ≥ PASS_SCORE hoặc chạm max_scripts."""
-    all_scored: list[ScoredScript] = []
-
-    def rewrite(script, notes):
-        return rewrite_script(llm, script, notes, formula, presenter)
-
-    while len(all_scored) < max_scripts:
-        n = min(batch_size, max_scripts - len(all_scored))
-        scripts = write_scripts(llm, formula, products, presenter, n, start_index=len(all_scored) + 1)
-        all_scored += score_and_improve(llm, scripts, formula, rewrite)
-        selected = select_top(all_scored)
-        print(f"Đã chấm {len(all_scored)} kịch bản, {len(selected)} bản đạt ≥ {config.PASS_SCORE:g}.")
-        if len(selected) >= config.TARGET_COUNT:
-            break
-    return all_scored, select_top(all_scored)
-
-
 def cmd_scripts(args, llm: LLM, formula: ChannelFormula | None = None) -> None:
     out = Path(args.out)
     if formula is None:
         formula = ChannelFormula.model_validate_json((out / "formula.json").read_text(encoding="utf-8"))
     products = config.load_yaml(args.products)
     presenter = config.load_yaml(args.presenter)
-    all_scored, selected = generate_until_enough(llm, formula, products, presenter, args.batch, args.max_scripts)
+    job = ScriptJob(formula=formula, products=products, presenter=presenter,
+                    batch_size=args.batch, max_scripts=args.max_scripts)
+    all_scored, selected = generate_until_enough(llm, job)
     write_outputs(out, formula, all_scored, selected)
     print(f"Xong: {len(selected)} kịch bản ≥ {config.PASS_SCORE:g} -> {out}/selected_scripts.md, {out}/veo_prompts.txt")
 

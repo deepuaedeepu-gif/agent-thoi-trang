@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from agent_thoi_trang import config
-from agent_thoi_trang.cli import generate_until_enough
+from agent_thoi_trang.pipeline import ScriptJob, generate_until_enough as _gen
+
+
+def generate_until_enough(llm, formula, products, presenter, batch_size, max_scripts, **kw):
+    return _gen(llm, ScriptJob(formula=formula, products=products, presenter=presenter,
+                               batch_size=batch_size, max_scripts=max_scripts, **kw), log=lambda m: None)
 from agent_thoi_trang.export import write_outputs
 from agent_thoi_trang.formula import rank_videos
 from agent_thoi_trang.models import (
@@ -124,3 +129,14 @@ def test_write_outputs(tmp_path, monkeypatch):
     write_outputs(tmp_path, FORMULA, all_scored, selected)
     assert "95.0 điểm" in (tmp_path / "selected_scripts.md").read_text(encoding="utf-8")
     assert "KB001" in (tmp_path / "veo_prompts.txt").read_text(encoding="utf-8")
+
+
+def test_custom_threshold_and_count(monkeypatch):
+    import agent_thoi_trang.scoring as scoring
+    monkeypatch.setattr(scoring.config, "JUDGE_PASSES", 1)
+    llm = FakeLLM([86, 80, 84, 83, 70])  # 80 (khoảng viết lại 75-84) -> 84 -> 83; 70 không viết lại
+    all_scored, selected = generate_until_enough(llm, FORMULA, {}, PRESENTER, batch_size=3, max_scripts=3,
+                                                 target_count=2, pass_score=85)
+    assert [s.total for s in selected] == [86]
+    assert [s.total for s in all_scored] == [86, 84, 70]
+    assert [s.revision for s in all_scored] == [0, 2, 0]
