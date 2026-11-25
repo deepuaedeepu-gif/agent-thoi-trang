@@ -15,7 +15,7 @@ from . import config
 from .analyze import analyze_folder
 from .export import write_outputs
 from .formula import build_formula
-from .llm import LLM, ClaudeLLM
+from .llm import LLM, make_llm
 from .models import AnalyzedVideo, ChannelFormula
 from .pipeline import ScriptJob, generate_until_enough
 
@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--no-ai", action="store_true", help="analyze: chỉ đo kỹ thuật bằng ffmpeg, không gọi Claude")
     args = p.parse_args(argv)
 
-    llm = None if (args.command == "analyze" and args.no_ai) else ClaudeLLM()
+    llm = None if (args.command == "analyze" and args.no_ai) else make_llm()
     if args.command == "analyze":
         cmd_analyze(args, llm)
     elif args.command == "formula":

@@ -20,7 +20,7 @@ class KeySpec:
 
 
 KEYS: list[KeySpec] = [
-    KeySpec("ANTHROPIC_API_KEY", "Claude (Anthropic)", "Phân tích video, rút công thức, viết và chấm kịch bản", True, """
+    KeySpec("ANTHROPIC_API_KEY", "Claude (Anthropic)", "Chỉ cần khi chọn kết nối Claude bằng khoá API thay cho Claude Code", False, """
 1. Mở [platform.claude.com](https://platform.claude.com) (trước đây là console.anthropic.com) và đăng ký / đăng nhập.
 2. Vào **Settings → Billing**, nạp tiền (tối thiểu khoảng 5 USD) để dùng API.
 3. Vào **Settings → API Keys**, bấm **Create Key**, đặt tên (ví dụ `agent-thoi-trang`).
@@ -60,6 +60,19 @@ KEYS: list[KeySpec] = [
 ]
 
 
+CLAUDE_CODE_GUIDE = """
+1. Cần gói **Claude Pro** hoặc **Max** (đăng ký tại [claude.ai](https://claude.ai)).
+2. Cài Claude Code theo [hướng dẫn chính thức](https://code.claude.com/docs/en/setup):
+   - **macOS / Linux:** mở Terminal, chạy `curl -fsSL https://claude.ai/install.sh | bash`
+   - **Windows:** mở PowerShell, chạy `irm https://claude.ai/install.ps1 | iex`
+3. Mở Terminal / PowerShell mới, gõ `claude`, chọn đăng nhập bằng **tài khoản Claude (Pro/Max)** và làm theo trình duyệt.
+4. Gõ `/exit` để thoát, đóng rồi mở lại app này, bấm **Kiểm tra kết nối**.
+
+Lưu ý: mỗi lần viết/chấm kịch bản dùng lượt của gói. Gói có giới hạn theo khung giờ; nếu chạm giới hạn, chờ
+hoặc giảm số kịch bản. Cách này chỉ dành cho chính bạn dùng trên máy của mình, không chia sẻ app kèm tài khoản.
+"""
+
+
 def load(path: Path = SETTINGS_FILE) -> dict[str, str]:
     if not path.exists():
         return {}
@@ -87,7 +100,7 @@ def apply(values: dict[str, str] | None = None, override: bool = False) -> None:
             os.environ[k] = v
     if override and values is not None:
         for spec in KEYS:
-            if spec.env not in values:
+            if spec.env not in values and spec.env != "LLM_BACKEND":
                 os.environ.pop(spec.env, None)
 
 

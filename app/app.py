@@ -22,7 +22,7 @@ from agent_thoi_trang import consent, facebook_scan, settings, tts  # noqa: E402
 from agent_thoi_trang.analyze import analyze_folder  # noqa: E402
 from agent_thoi_trang.export import formula_markdown, script_markdown, write_outputs  # noqa: E402
 from agent_thoi_trang.formula import build_formula  # noqa: E402
-from agent_thoi_trang.llm import ClaudeLLM  # noqa: E402
+from agent_thoi_trang import llm as llm_mod  # noqa: E402
 from agent_thoi_trang.pipeline import ScriptJob, generate_until_enough  # noqa: E402
 from agent_thoi_trang.models import ScoredScript  # noqa: E402
 from agent_thoi_trang.production import get_status, produce, set_status  # noqa: E402
@@ -54,15 +54,23 @@ if _ffmpeg_error:
     st.error(_ffmpeg_error)
 
 
+def llm_ready() -> tuple[bool, str]:
+    if os.environ.get("LLM_BACKEND", "claude_code") == "api":
+        return bool(os.environ.get("ANTHROPIC_API_KEY")), "Claude qua khoá API"
+    return bool(llm_mod.claude_code_path()), "Claude qua Claude Code (gói Pro/Max)"
+
+
 # ---------- Thanh bên: trạng thái ----------
 
 with st.sidebar:
     st.header("Trạng thái")
+    _ok, _label = llm_ready()
+    st.write(f"{'✅' if _ok else '⚠️'} {_label}")
     for spec in settings.KEYS:
-        ok = bool(os.environ.get(spec.env))
-        icon = "✅" if ok else ("⚠️" if spec.required else "▫️")
-        st.write(f"{icon} {spec.label}")
-    st.caption("Nhập khoá ở tab ⚙️ Cài đặt. Chỉ Claude là bắt buộc để tạo kịch bản.")
+        if spec.env == "ANTHROPIC_API_KEY":
+            continue
+        st.write(f"{'✅' if os.environ.get(spec.env) else '▫️'} {spec.label}")
+    st.caption("Cài đặt ở tab ⚙️ Cài đặt.")
     st.divider()
     st.subheader("Facebook")
     if facebook_scan.has_session():
@@ -76,11 +84,12 @@ with st.sidebar:
                "xác minh hoặc khoá tạm thời. App quét chậm và giới hạn số video để giảm rủi ro.")
 
 
-def need_llm() -> ClaudeLLM | None:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        st.error("Cần nhập khoá Claude (Anthropic) ở tab ⚙️ Cài đặt.")
+def need_llm():
+    ok, label = llm_ready()
+    if not ok:
+        st.error(f"Chưa dùng được {label}. Xem hướng dẫn ở tab ⚙️ Cài đặt.")
         return None
-    return ClaudeLLM()
+    return llm_mod.make_llm()
 
 
 tab_formula, tab_models, tab_voices, tab_build, tab_settings = st.tabs(
@@ -90,9 +99,40 @@ tab_formula, tab_models, tab_voices, tab_build, tab_settings = st.tabs(
 # ---------- Tab Cài đặt ----------
 
 with tab_settings:
+    st.subheader("Kết nối Claude")
+    saved_all = settings.load()
+    backend_labels = {"claude_code": "Claude Code (dùng gói Pro/Max của bạn)", "api": "Khoá API Anthropic (trả theo lượng dùng)"}
+    current_backend = os.environ.get("LLM_BACKEND", "claude_code")
+    choice = st.radio("Agent gọi Claude qua", list(backend_labels), format_func=backend_labels.get,
+                      index=list(backend_labels).index(current_backend), horizontal=True)
+    if choice != current_backend:
+        settings.save({**saved_all, "LLM_BACKEND": choice})
+        st.rerun()
+    if choice == "claude_code":
+        found = llm_mod.claude_code_path()
+        if found:
+            st.success(f"Đã tìm thấy Claude Code: {found}")
+        else:
+            st.warning("Chưa tìm thấy Claude Code trên máy.")
+        with st.expander("Cách cài và đăng nhập Claude Code", expanded=not found):
+            st.markdown(settings.CLAUDE_CODE_GUIDE)
+        if found and st.button("Kiểm tra kết nối"):
+            from pydantic import BaseModel
+
+            class Ping(BaseModel):
+                reply: str
+
+            with st.spinner("Đang hỏi Claude Code..."):
+                try:
+                    r = llm_mod.ClaudeCodeLLM(timeout=180).parse(
+                        "Trả lời ngắn bằng tiếng Việt.", [llm_mod.text_block("Chào bạn, trả lời 'Đã kết nối'.")], Ping)
+                    st.success(f"Claude Code trả lời: {r.reply}")
+                except Exception as exc:
+                    st.error(str(exc))
+    st.divider()
     st.subheader("Khoá API")
     st.caption("Khoá được lưu trong file data/settings.json trên máy bạn, không gửi đi đâu ngoài nhà cung cấp "
-               "tương ứng. Chỉ Claude là bắt buộc; các khoá khác cần khi dùng chức năng tương ứng.")
+               "tương ứng. Mỗi khoá chỉ cần khi dùng chức năng tương ứng.")
     saved = settings.load()
     with st.form("api-keys"):
         values = {}
@@ -107,7 +147,7 @@ with tab_settings:
                                              key=f"set-{spec.env}", label_visibility="collapsed",
                                              placeholder="Dán khoá vào đây")
         if st.form_submit_button("Lưu cài đặt", type="primary"):
-            settings.save(values)
+            settings.save({"LLM_BACKEND": os.environ.get("LLM_BACKEND", "claude_code"), **values})
             st.success("Đã lưu.")
             st.rerun()
 
@@ -125,7 +165,7 @@ def run_scan(urls: list[str], out_dir: Path, top_n: int, box) -> None:
 
 
 def analyze_and_save(name: str, sources: list[str], video_dir: Path, box) -> SavedFormula:
-    llm = ClaudeLLM()
+    llm = llm_mod.make_llm()
     box.write("Đang phân tích từng video (khung hình, nhịp cắt, lời thoại)...")
     videos = analyze_folder(video_dir, llm, video_dir.parent / "work")
     if not videos:
@@ -434,7 +474,7 @@ with tab_build:
                 )
                 with st.status("Agent đang viết và chấm kịch bản...", expanded=True) as box:
                     try:
-                        all_scored, selected = generate_until_enough(ClaudeLLM(), job, log=box.write)
+                        all_scored, selected = generate_until_enough(llm_mod.make_llm(), job, log=box.write)
                         write_outputs(job_dir, formula.formula, all_scored, selected)
                         st.session_state["last_job"] = {"dir": str(job_dir), "images": product.images,
                                                         "presenter_id": presenter.id, "voice_id": voice.id,

@@ -6,8 +6,10 @@
 2. Tải code về và giải nén.
 3. Bấm đúp **`chay_app_windows.bat`** (Windows) hoặc **`chay_app_mac.command`** (macOS; lần đầu chuột phải → Open).
    Lần đầu mất vài phút để cài thư viện.
-4. Trình duyệt mở **http://localhost:8501**. Vào tab **⚙️ Cài đặt**, làm theo hướng dẫn để tạo và dán khoá API.
-   Chỉ khoá Claude là bắt buộc để tạo kịch bản.
+4. Cài **Claude Code** và đăng nhập bằng gói Claude Pro/Max của bạn (hướng dẫn trong tab **⚙️ Cài đặt**).
+   App gọi Claude Code trên máy bạn để phân tích và viết, chấm kịch bản, nên không cần khoá API Claude riêng.
+   Muốn dùng khoá API thay thế thì chọn ở tab Cài đặt.
+5. Trình duyệt mở **http://localhost:8501**. Tab **⚙️ Cài đặt** có hướng dẫn tạo các khoá cho video và giọng đọc.
 
 
 ## App điều khiển

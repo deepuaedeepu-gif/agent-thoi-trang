@@ -81,3 +81,66 @@ def test_settings_save_load_apply(tmp_path, monkeypatch):
     settings.save({}, path=f)
     assert "XAI_API_KEY" not in os.environ
     assert all(spec.guide.strip().startswith("1.") for spec in settings.KEYS)
+    assert not any(spec.required for spec in settings.KEYS)
+
+
+def test_claude_code_backend_parses_result(monkeypatch):
+    import json as _json
+
+    from pydantic import BaseModel
+
+    from agent_thoi_trang import llm
+
+    class Out(BaseModel):
+        reply: str
+
+    events = [{"type": "system", "subtype": "init"},
+              {"type": "result", "is_error": False, "structured_output": {"reply": "Đã kết nối"}}]
+    stdout = "\n".join(_json.dumps(e, ensure_ascii=False) for e in events)
+    assert llm.ClaudeCodeLLM.read_result(stdout, "", Out).reply == "Đã kết nối"
+    # Không có structured_output: đọc JSON trong result
+    stdout2 = _json.dumps({"type": "result", "is_error": False, "result": '```json\n{"reply": "ok"}\n```'})
+    assert llm.ClaudeCodeLLM.read_result(stdout2, "", Out).reply == "ok"
+    err = _json.dumps({"type": "result", "is_error": True, "result": "Not logged in"})
+    with pytest.raises(RuntimeError, match="Not logged in"):
+        llm.ClaudeCodeLLM.read_result(err, "", Out)
+
+
+def test_claude_code_command_disables_tools_and_hides_api_key(monkeypatch, tmp_path):
+    from pydantic import BaseModel
+
+    from agent_thoi_trang import llm
+
+    class Out(BaseModel):
+        reply: str
+
+    seen = {}
+
+    def fake_run(cmd, input, env, **kw):
+        seen.update(cmd=cmd, input=input, env=env)
+
+        class P:
+            stdout = '{"type": "result", "is_error": false, "structured_output": {"reply": "x"}}'
+            stderr = ""
+        return P()
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-not-leak")
+    monkeypatch.setattr(llm.subprocess, "run", fake_run)
+    out = llm.ClaudeCodeLLM(executable="/usr/bin/claude").parse(
+        "sys", [llm.text_block("hi"), {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA"}}], Out)
+    assert out.reply == "x"
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("--tools") + 1] == "" and "--json-schema" in cmd and "-p" in cmd
+    assert "ANTHROPIC_API_KEY" not in seen["env"]
+    assert '"image"' in seen["input"]
+
+
+def test_make_llm_respects_backend(monkeypatch):
+    from agent_thoi_trang import llm
+
+    monkeypatch.setattr(llm, "claude_code_path", lambda: "/usr/bin/claude")
+    monkeypatch.delenv("LLM_BACKEND", raising=False)
+    assert isinstance(llm.make_llm(), llm.ClaudeCodeLLM)
+    monkeypatch.setenv("LLM_BACKEND", "api")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    assert isinstance(llm.make_llm(), llm.ClaudeLLM)
