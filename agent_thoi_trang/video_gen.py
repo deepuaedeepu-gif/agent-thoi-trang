@@ -60,7 +60,7 @@ def _b64(path: str) -> tuple[str, str]:
 def _key(name: str) -> str:
     value = os.environ.get(name)
     if not value:
-        raise VideoGenError(f"Chưa có khoá {name}. Nhập ở thanh bên trái của app.")
+        raise VideoGenError(f"Chưa có khoá {name}. Nhập ở tab Cài đặt của app.")
     return value
 
 

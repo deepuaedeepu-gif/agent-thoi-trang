@@ -63,4 +63,21 @@ def test_app_renders(tmp_path, monkeypatch):
     at.run()
     assert not at.exception
     labels = [t.label for t in at.tabs]
-    assert labels == ["📈 Công thức thành công", "🧍 Kho Người mẫu", "🎙️ Kho voice", "🎬 Dựng video"]
+    assert labels == ["📈 Công thức thành công", "🧍 Kho Người mẫu", "🎙️ Kho voice", "🎬 Dựng video", "⚙️ Cài đặt"]
+
+
+def test_settings_save_load_apply(tmp_path, monkeypatch):
+    import os
+
+    from agent_thoi_trang import settings
+
+    f = tmp_path / "s.json"
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.setattr(settings, "SETTINGS_FILE", f)
+    monkeypatch.setattr(settings, "load", lambda path=f: settings.json.loads(f.read_text()) if f.exists() else {})
+    settings.save({"XAI_API_KEY": " xai-123 ", "GEMINI_API_KEY": ""}, path=f)
+    assert settings.json.loads(f.read_text()) == {"XAI_API_KEY": "xai-123"}
+    assert os.environ["XAI_API_KEY"] == "xai-123"
+    settings.save({}, path=f)
+    assert "XAI_API_KEY" not in os.environ
+    assert all(spec.guide.strip().startswith("1.") for spec in settings.KEYS)

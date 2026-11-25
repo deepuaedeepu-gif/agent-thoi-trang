@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from agent_thoi_trang import consent, facebook_scan, tts  # noqa: E402
+from agent_thoi_trang import consent, facebook_scan, settings, tts  # noqa: E402
 from agent_thoi_trang.analyze import analyze_folder  # noqa: E402
 from agent_thoi_trang.export import formula_markdown, script_markdown, write_outputs  # noqa: E402
 from agent_thoi_trang.formula import build_formula  # noqa: E402
@@ -30,22 +30,39 @@ from agent_thoi_trang.store import Consent, Presenter, Product, SavedFormula, St
 
 st.set_page_config(page_title="Agent video thời trang", page_icon="🎬", layout="wide")
 store = Store()
+settings.apply()
 
 
-# ---------- Thanh bên: khoá API ----------
+@st.cache_resource
+def ensure_ffmpeg() -> str | None:
+    """Máy chưa có ffmpeg (thường gặp trên Windows/Mac) thì tải bản đóng gói sẵn ở lần chạy đầu."""
+    import shutil
+
+    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+        return None
+    try:
+        import static_ffmpeg
+
+        static_ffmpeg.add_paths()
+        return None
+    except Exception as exc:  # noqa: BLE001
+        return f"Không tìm thấy ffmpeg và không tải được tự động: {exc}. Hãy cài ffmpeg rồi mở lại app."
+
+
+_ffmpeg_error = ensure_ffmpeg()
+if _ffmpeg_error:
+    st.error(_ffmpeg_error)
+
+
+# ---------- Thanh bên: trạng thái ----------
 
 with st.sidebar:
-    st.header("Kết nối")
-    st.caption("Khoá chỉ giữ trong phiên chạy này, không ghi ra file. Có thể đặt sẵn bằng biến môi trường.")
-    for env, label in [("ANTHROPIC_API_KEY", "Anthropic (viết, chấm kịch bản)"),
-                       ("GEMINI_API_KEY", "Gemini API (tạo video Omni)"),
-                       ("XAI_API_KEY", "xAI (tạo video Grok Imagine)"),
-                       ("GOOGLE_TTS_API_KEY", "Google Cloud TTS"),
-                       ("FPT_AI_API_KEY", "FPT.AI TTS"),
-                       ("ELEVENLABS_API_KEY", "ElevenLabs")]:
-        val = st.text_input(label, type="password", value=os.environ.get(env, ""), key=f"key-{env}")
-        if val:
-            os.environ[env] = val
+    st.header("Trạng thái")
+    for spec in settings.KEYS:
+        ok = bool(os.environ.get(spec.env))
+        icon = "✅" if ok else ("⚠️" if spec.required else "▫️")
+        st.write(f"{icon} {spec.label}")
+    st.caption("Nhập khoá ở tab ⚙️ Cài đặt. Chỉ Claude là bắt buộc để tạo kịch bản.")
     st.divider()
     st.subheader("Facebook")
     if facebook_scan.has_session():
@@ -61,13 +78,38 @@ with st.sidebar:
 
 def need_llm() -> ClaudeLLM | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        st.error("Cần nhập Anthropic API key ở thanh bên trái.")
+        st.error("Cần nhập khoá Claude (Anthropic) ở tab ⚙️ Cài đặt.")
         return None
     return ClaudeLLM()
 
 
-tab_formula, tab_models, tab_voices, tab_build = st.tabs(
-    ["📈 Công thức thành công", "🧍 Kho Người mẫu", "🎙️ Kho voice", "🎬 Dựng video"])
+tab_formula, tab_models, tab_voices, tab_build, tab_settings = st.tabs(
+    ["📈 Công thức thành công", "🧍 Kho Người mẫu", "🎙️ Kho voice", "🎬 Dựng video", "⚙️ Cài đặt"])
+
+
+# ---------- Tab Cài đặt ----------
+
+with tab_settings:
+    st.subheader("Khoá API")
+    st.caption("Khoá được lưu trong file data/settings.json trên máy bạn, không gửi đi đâu ngoài nhà cung cấp "
+               "tương ứng. Chỉ Claude là bắt buộc; các khoá khác cần khi dùng chức năng tương ứng.")
+    saved = settings.load()
+    with st.form("api-keys"):
+        values = {}
+        for spec in settings.KEYS:
+            tag = "bắt buộc" if spec.required else "tuỳ chọn"
+            current = os.environ.get(spec.env, "")
+            st.markdown(f"#### {spec.label} · {tag}")
+            st.caption(spec.used_for + (f" · Hiện tại: {settings.mask(current)}" if current else " · Chưa nhập"))
+            with st.expander("Cách tạo khoá"):
+                st.markdown(spec.guide)
+            values[spec.env] = st.text_input(spec.label, value=saved.get(spec.env, ""), type="password",
+                                             key=f"set-{spec.env}", label_visibility="collapsed",
+                                             placeholder="Dán khoá vào đây")
+        if st.form_submit_button("Lưu cài đặt", type="primary"):
+            settings.save(values)
+            st.success("Đã lưu.")
+            st.rerun()
 
 
 # ---------- Tab Công thức thành công ----------

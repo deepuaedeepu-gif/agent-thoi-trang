@@ -6,6 +6,7 @@ faster-whisper>=1.0
 # App điều khiển
 google-genai>=3.6   # Gemini Omni Flash
 requests>=2.32
+static-ffmpeg>=2.5   # tự tải ffmpeg nếu máy chưa có
 streamlit>=1.40
 playwright>=1.48   # sau khi cài: python -m playwright install chromium
 yt-dlp>=2025.1.1

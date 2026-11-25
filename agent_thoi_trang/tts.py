@@ -32,7 +32,7 @@ class TTSError(RuntimeError):
 def _key(name: str) -> str:
     value = os.environ.get(name)
     if not value:
-        raise TTSError(f"Chưa có khoá {name}. Nhập ở thanh bên trái của app.")
+        raise TTSError(f"Chưa có khoá {name}. Nhập ở tab Cài đặt của app.")
     return value
 
 
