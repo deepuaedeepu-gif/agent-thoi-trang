@@ -1,0 +1,25 @@
+# Hồ sơ người dẫn dùng chung cho mọi video, để Veo giữ nhân vật nhất quán.
+#
+# Mặc định: một người dẫn AI hoàn toàn mới, KHÔNG dựa trên người thật nào.
+# Agent không sao chép khuôn mặt, giọng nói hay ngữ điệu của người trong các page mẫu.
+# Khi chủ dự án gửi video tự quay xác nhận danh tính và đồng ý, đổi `mode` thành `owner`
+# và điền đường dẫn ảnh/giọng tham chiếu ở dưới.
+
+mode: ai_original   # ai_original | owner
+
+ai_original:
+  name: "Mây"
+  description_en: >-
+    A fictional Vietnamese woman in her mid-20s, shoulder-length dark brown hair with soft
+    curtain bangs, warm friendly smile, natural makeup, slim build, confident and playful
+    energy. She is an original AI character and does not resemble any real person.
+  voice:
+    style_vi: "Giọng nữ miền Nam, tươi, nhanh vừa, xưng 'Mây' gọi người xem là 'mấy bà'"
+    tts_voice_hint: "vi-VN female, young, energetic"
+
+owner:
+  # Chỉ dùng sau khi đã xác minh danh tính chủ dự án.
+  reference_images: []   # ví dụ: ["inputs/owner/front.jpg", "inputs/owner/side.jpg"]
+  voice_sample: null     # ví dụ: "inputs/owner/voice.wav"
+  description_en: ""
+  verified: false

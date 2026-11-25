@@ -1,0 +1,14 @@
+# Sản phẩm cần làm video. Agent viết kịch bản xoay quanh các sản phẩm này.
+products:
+  - name: "Quần jeans ống loe lưng cao"
+    price: "359.000đ"
+    details: "Denim co giãn, túi nắp sau, 2 màu xanh nhạt và đen, size S-XL"
+    selling_points: ["Hack dáng chân dài", "Co giãn thoải mái", "Túi sau nâng mông"]
+  - name: "Áo thun croptop kẻ sọc viền đen"
+    price: "159.000đ"
+    details: "Cotton 4 chiều, form ôm"
+    selling_points: ["Dễ phối", "Không nhăn", "Mặc đi chơi hay đi làm đều được"]
+
+# Bối cảnh chung của đợt nội dung
+season: "Cuối năm 2026, gần Tết"
+audience: "Nữ 18-30, thích phối đồ đơn giản, mua sắm qua Facebook"

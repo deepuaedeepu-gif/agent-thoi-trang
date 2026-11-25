@@ -1,0 +1,5 @@
+anthropic>=2.14
+pydantic>=2.7
+pyyaml>=6.0
+# Tuỳ chọn: chép lời tiếng Việt
+faster-whisper>=1.0
